@@ -11,6 +11,8 @@ def readAllKeys(clusterFile, beginKey, endKey, batchSize, outputFile):
     fdb.options.set_trace_enable()
     db = fdb.open(cluster_file=clusterFile)
 
+    onlyOutputFirst = 10000000
+
     currentBegin = fdb.KeySelector.first_greater_or_equal(beginKey)
 
     f = None
@@ -27,21 +29,27 @@ def readAllKeys(clusterFile, beginKey, endKey, batchSize, outputFile):
             kvs = tr.get_range(currentBegin, endKey, batchSize)
             keyRead = 0
             for key, value in kvs:
+                saveKey = key.hex()
+                saveValue = value.hex()
+                jsonData = json.dumps({saveKey: saveValue})
                 if (outputFile == ""):
-                    print (json.dumps({str(fdb.tuple.unpack(key)): str(value)}))
+                    # print (json.dumps({str(fdb.tuple.unpack(key)): str(value)}))
+                    print (jsonData)
                 else:
-                    json.dump({str(fdb.tuple.unpack(key)): str(value)}, f)
+                    print (json.dumps({str(fdb.tuple.unpack(key)): str(value)}))
+                    f.write(jsonData+'\n')
                 total += 1
                 keyRead += 1
                 if (keyRead == batchSize):
                     lastKey = key
                 if total % 10000 == 0:
                     print (total)
+
             if keyRead < batchSize:
                 break
-            if total > 30000:
-                sys.exit()
-            currentBegin = KeySelector.first_greater_than(lastKey)
+            if total >= onlyOutputFirst:
+                break;
+            currentBegin = fdb.KeySelector.first_greater_than(lastKey)
         except fdb.impl.FDBError as e:
             print ("Get error ", e.code)
             if e.code == 1007:
@@ -50,6 +58,8 @@ def readAllKeys(clusterFile, beginKey, endKey, batchSize, outputFile):
             else:
                 logging.warning("Getting FDB error code "+str(e.code))
     print ("Scan completed. Total row scanned ", total)
+    if outputFile != "":
+        f.close()
 
 def main(argv):
     # logging.basicConfig(filename="read-all-keys.{sdate}.log".format(sdate=datetime.now().strftime("%d-%m-%Y-%H-%M-%S")),
@@ -62,7 +72,7 @@ def main(argv):
     beginKey = b''
     endKey = b'\xff'
     outputFile = ""
-    batchSize = 1000
+    batchSize = 100
 
     options = "hc:b:n:o:s:"
     longOptions = ["help", "cluster_file=", "begin=", "end=", "output=", "batch_size="]
